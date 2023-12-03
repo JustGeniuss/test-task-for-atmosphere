@@ -1,0 +1,3 @@
+export const COLLECTING_TIMEOUT = 15000
+export const SPIN_TIMEOUT = 5000
+export const CALCULATING_TIMEOUT = 1000

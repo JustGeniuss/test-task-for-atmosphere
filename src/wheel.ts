@@ -1,15 +1,17 @@
+import { COLLECTING_TIMEOUT, SPIN_TIMEOUT, CALCULATING_TIMEOUT } from './constants/timeouts'
 import { SECTORS } from './constants/sectors'
-import { BetResultEnum } from './enums/bet-result.enum'
-import { AvailableSectors, Sector } from './types/sectors.type'
-import { Player } from './player'
-import { rl } from './helpers/readline'
 import { delay } from './helpers/delay'
+import { validateNumber } from './helpers/validate-number'
+import { Player } from './player'
+import { ReadlineClient } from './readline'
+import { AvailableSectors, Sector } from './types/sectors.type'
 
 export class Wheel {
-    id: number = 0
+    spinNumber: number = 0
     sectors: AvailableSectors = []
     history: AvailableSectors = []
     players: Player[] = []
+    readlineClient: ReadlineClient
     constructor() {
         this.sectors = Array(24)
             .fill(2)
@@ -21,17 +23,14 @@ export class Wheel {
                 Array(2).fill(24),
                 Array(1).fill(48),
             )
+        this.readlineClient = new ReadlineClient()
     }
-    async startGame(): Promise<void> {
-        let playersCount = await rl.question(
-            'Введите количество игроков (от 1 до 7): ',
-        )
 
-        while (this.isPlayersCountIncorrect(playersCount)) {
-            console.log('Неверный ввод. Пожалуйста, введите число от 1 до 7.')
-            playersCount = await rl.question(
-                'Введите количество игроков (от 1 до 7): ',
-            )
+    async startGame(): Promise<void> {
+        let playersCount = await this.readlineClient.playersCount()
+
+        while (!validateNumber(playersCount, { min: 1, max: 7 })) {
+            playersCount = await this.readlineClient.playersCount()
         }
 
         for (let i = 0; i < Number(playersCount); i++) {
@@ -40,20 +39,10 @@ export class Wheel {
         this.gameCycle()
     }
 
-    isPlayersCountIncorrect(playersCount: string): boolean {
-        const playersCountNumber = +playersCount
-        return (
-            isNaN(playersCountNumber) ||
-            playersCountNumber < 1 ||
-            playersCountNumber > 7
-        )
-    }
-
-    gameCycle = (): void => {
-        this.startIteration()
-        setInterval(() => {
-            this.startIteration()
-        }, 21000)
+    async gameCycle(): Promise<void> {
+        while (true) {
+            await this.startIteration()
+        }
     }
 
     spin(): Sector {
@@ -64,18 +53,14 @@ export class Wheel {
         return sector
     }
 
-    sendWins(sector: Sector): void {
+    calculateBets(sector: Sector): void {
         for (const player of this.players) {
-            for (const bet of player.betHistory) {
-                if (bet.result === BetResultEnum.IN_PROCESS) {
-                    if (bet.sector === sector) {
-                        bet.result = BetResultEnum.WIN
-                        bet.win = bet.potentialWin
-                        player.balance += bet.potentialWin
-                    } else {
-                        bet.result = BetResultEnum.LOSE
-                        bet.win = 0
-                    }
+            for (const bet of player.betHistory.get(this.spinNumber) ?? []) {
+                if (bet.sector === sector) {
+                    bet.win(bet.potentialWin)
+                    player.increaseBalance(bet.potentialWin)
+                } else {
+                    bet.lose()
                 }
             }
         }
@@ -83,36 +68,40 @@ export class Wheel {
 
     async startIteration() {
         console.log(this.history)
-        this.id++
+        this.spinNumber++
         console.log('start')
-        await Promise.race([this.collectBets(), delay(15000)])
+
+        await Promise.race([this.collectBets(), delay(COLLECTING_TIMEOUT)])
         console.log('\nПрием ставок окончен')
+
         console.log('Начинаем прокрут колеса')
         const winningSector = this.spin()
-        await delay(5000)
+        await delay(SPIN_TIMEOUT)
         console.log('winning sector is ', winningSector)
-        this.sendWins(winningSector)
+
+        this.calculateBets(winningSector)
+        await delay(CALCULATING_TIMEOUT)
     }
 
     async collectBets(): Promise<void> {
         while (true) {
-            const playerNumber = +(await rl.question(
-                `Введите номер игрока, который совершает ставку`,
-            ))
+            let playerNumber = await this.readlineClient.playerNumber()
 
-            if (!this.players[playerNumber - 1]) {
+            while (!this.players[playerNumber - 1]) {
                 console.log(
-                    'Такого игрока не существует, пожалуйста, введите корректный номер',
+                    'Такого игрока не существует, пожалуйста, введите корректный номер ',
                 )
-                continue
+                playerNumber = await this.readlineClient.playerNumber()
             }
 
-            const bet = +(await rl.question(
-                `Игрок ${playerNumber}, введите ставку`,
-            ))
+            let bet = await this.readlineClient.betSize(playerNumber)
 
-            const sector = +(await rl.question(
-                `Игрок ${playerNumber}, введите сектор`,
+            while (!validateNumber(bet, { min: 1 })) {
+                bet = await this.readlineClient.betSize(playerNumber)
+            }
+
+            const sector = (await this.readlineClient.sector(
+                playerNumber,
             )) as Sector
 
             if (!SECTORS.includes(sector)) {
@@ -124,7 +113,7 @@ export class Wheel {
             }
 
             const player = this.players[playerNumber - 1] as Player
-            const playersBet = player.makeBet(bet, sector, this.id)
+            const playersBet = player.makeBet(bet, sector, this.spinNumber)
 
             if (!playersBet) {
                 continue
