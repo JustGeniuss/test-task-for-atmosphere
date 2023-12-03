@@ -1,4 +1,8 @@
-import { COLLECTING_TIMEOUT, SPIN_TIMEOUT, CALCULATING_TIMEOUT } from './constants/timeouts'
+import {
+    COLLECTING_TIMEOUT,
+    SPIN_TIMEOUT,
+    CALCULATING_TIMEOUT,
+} from './constants/timeouts'
 import { SECTORS } from './constants/sectors'
 import { delay } from './helpers/delay'
 import { validateNumber } from './helpers/validate-number'
@@ -57,8 +61,8 @@ export class Wheel {
         for (const player of this.players) {
             for (const bet of player.betHistory.get(this.spinNumber) ?? []) {
                 if (bet.sector === sector) {
-                    bet.win(bet.potentialWin)
-                    player.increaseBalance(bet.potentialWin)
+                    const winAmount = bet.win()
+                    player.increaseBalance(winAmount)
                 } else {
                     bet.lose()
                 }
@@ -113,14 +117,14 @@ export class Wheel {
             }
 
             const player = this.players[playerNumber - 1] as Player
-            const playersBet = player.makeBet(bet, sector, this.spinNumber)
+            const betAmount = player.makeBet(bet, sector, this.spinNumber)
 
-            if (!playersBet) {
+            if (!betAmount) {
                 continue
             }
 
             console.log(
-                `Игрок ${playerNumber} - Ставка: ${playersBet.bet}, Баланс: ${player.balance}`,
+                `Игрок ${playerNumber} - Ставка: ${betAmount}, Баланс: ${player.balance}`,
             )
         }
     }

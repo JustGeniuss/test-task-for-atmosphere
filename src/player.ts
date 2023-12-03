@@ -7,7 +7,11 @@ export class Player {
     constructor(initialBalance: number) {
         this.balance = initialBalance
     }
-    makeBet(bet: number, sector: Sector, spinNumber: number) {
+    makeBet(
+        bet: number,
+        sector: Sector,
+        spinNumber: number,
+    ): number | undefined {
         if (this.balance < bet) {
             console.log(
                 'Баланс игрока меньше суммы ставки, данная ставка невозможна',
@@ -26,10 +30,10 @@ export class Player {
             oldBetHistory.push(newBet)
         }
 
-        return { bet }
+        return bet
     }
 
-    increaseBalance(win: number): void {
-        this.balance += win
+    increaseBalance(value: number): void {
+        this.balance += value
     }
 }
